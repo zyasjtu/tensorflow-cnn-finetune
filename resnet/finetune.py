@@ -9,10 +9,10 @@ from preprocessor import BatchPreprocessor
 
 tf.app.flags.DEFINE_float('learning_rate', 0.0001, 'Learning rate for adam optimizer')
 tf.app.flags.DEFINE_integer('resnet_depth', 50, 'ResNet architecture to be used: 50, 101 or 152')
-tf.app.flags.DEFINE_integer('num_epochs', 10, 'Number of epochs for training')
-tf.app.flags.DEFINE_integer('num_classes', 26, 'Number of classes')
+tf.app.flags.DEFINE_integer('num_epochs', 100, 'Number of epochs for training')
+tf.app.flags.DEFINE_integer('num_classes', 8, 'Number of classes')
 tf.app.flags.DEFINE_integer('batch_size', 128, 'Batch size')
-tf.app.flags.DEFINE_string('train_layers', 'fc', 'Finetuning layers, seperated by commas')
+tf.app.flags.DEFINE_string('train_layers', 'fc,scale5', 'Finetuning layers, seperated by commas')
 tf.app.flags.DEFINE_string('multi_scale', '', 'As preprocessing; scale the image randomly between 2 numbers and crop randomly at network\'s input size')
 tf.app.flags.DEFINE_string('training_file', '../data/train.txt', 'Training dataset file')
 tf.app.flags.DEFINE_string('val_file', '../data/val.txt', 'Validation dataset file')
@@ -64,12 +64,12 @@ def main(_):
     train_op = model.optimize(FLAGS.learning_rate, train_layers)
 
     # Training accuracy of the model
-    correct_pred = tf.equal(tf.argmax(model.prob, 1), tf.argmax(y, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+    # correct_pred = tf.equal(tf.argmax(model.prob, 1), tf.argmax(y, 1))
+    # accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
     # Summaries
     tf.summary.scalar('train_loss', loss)
-    tf.summary.scalar('train_accuracy', accuracy)
+    # tf.summary.scalar('train_accuracy', accuracy)
     merged_summary = tf.summary.merge_all()
 
     train_writer = tf.summary.FileWriter(tensorboard_train_dir)
@@ -84,15 +84,16 @@ def main(_):
         multi_scale = None
 
     train_preprocessor = BatchPreprocessor(dataset_file_path=FLAGS.training_file, num_classes=FLAGS.num_classes,
-                                           output_size=[224, 224], horizontal_flip=True, shuffle=True, multi_scale=multi_scale)
+                                           output_size=[224, 224], horizontal_flip=False, shuffle=True, multi_scale=multi_scale)
     val_preprocessor = BatchPreprocessor(dataset_file_path=FLAGS.val_file, num_classes=FLAGS.num_classes, output_size=[224, 224])
 
     # Get the number of training/validation steps per epoch
     train_batches_per_epoch = np.floor(len(train_preprocessor.labels) / FLAGS.batch_size).astype(np.int16)
     val_batches_per_epoch = np.floor(len(val_preprocessor.labels) / FLAGS.batch_size).astype(np.int16)
 
-
-    with tf.Session() as sess:
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
         train_writer.add_graph(sess.graph)
 
@@ -106,14 +107,13 @@ def main(_):
         print("{} Open Tensorboard at --logdir {}".format(datetime.datetime.now(), tensorboard_dir))
 
         for epoch in range(FLAGS.num_epochs):
-            print("{} Epoch number: {}".format(datetime.datetime.now(), epoch+1))
             step = 1
 
             # Start training
             while step < train_batches_per_epoch:
                 batch_xs, batch_ys = train_preprocessor.next_batch(FLAGS.batch_size)
-                sess.run(train_op, feed_dict={x: batch_xs, y: batch_ys, is_training: True})
-
+                batch_loss, _ = sess.run([loss, train_op], feed_dict={x: batch_xs, y: batch_ys, is_training: True})
+            	print("Epoch: {}, Step number: {}, Batch loss: {}".format(epoch+1, step, batch_loss))
                 # Logging
                 if step % FLAGS.log_step == 0:
                     s = sess.run(merged_summary, feed_dict={x: batch_xs, y: batch_ys, is_training: False})
@@ -122,22 +122,21 @@ def main(_):
                 step += 1
 
             # Epoch completed, start validation
-            print("{} Start validation".format(datetime.datetime.now()))
-            test_acc = 0.
+            test_loss = 0.
             test_count = 0
 
-            for _ in range(val_batches_per_epoch):
+            for i in range(val_batches_per_epoch):
                 batch_tx, batch_ty = val_preprocessor.next_batch(FLAGS.batch_size)
-                acc = sess.run(accuracy, feed_dict={x: batch_tx, y: batch_ty, is_training: False})
-                test_acc += acc
+                los = sess.run(loss, feed_dict={x: batch_tx, y: batch_ty, is_training: False})
+                test_loss += los
                 test_count += 1
 
-            test_acc /= test_count
+            test_loss /= test_count
             s = tf.Summary(value=[
-                tf.Summary.Value(tag="validation_accuracy", simple_value=test_acc)
+                tf.Summary.Value(tag="validation_loss", simple_value=test_loss)
             ])
             val_writer.add_summary(s, epoch+1)
-            print("{} Validation Accuracy = {:.4f}".format(datetime.datetime.now(), test_acc))
+            print("Epoch {} Validation Loss = {:.4f}".format(epoch+1, test_loss))
 
             # Reset the dataset pointers
             val_preprocessor.reset_pointer()

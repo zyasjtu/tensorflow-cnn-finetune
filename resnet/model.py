@@ -68,11 +68,11 @@ class ResNetModel(object):
 
     def loss(self, batch_x, batch_y=None):
         y_predict = self.inference(batch_x)
-        # cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=y_predict, labels=batch_y)
-        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=y_predict, labels=batch_y)
-        cross_entropy_mean = tf.reduce_mean(cross_entropy)
-        regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-        self.loss = tf.add_n([cross_entropy_mean] + regularization_losses)
+        # cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=y_predict, labels=batch_y)
+        # cross_entropy_mean = tf.reduce_mean(cross_entropy)
+        # regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+        # self.loss = tf.add_n([cross_entropy_mean] + regularization_losses)
+        self.loss = tf.sqrt(tf.losses.mean_squared_error(batch_y, y_predict))
         return self.loss
 
     def optimize(self, learning_rate, train_layers=[]):
