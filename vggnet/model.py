@@ -163,7 +163,12 @@ class VggNetModel(object):
 
     def loss(self, batch_x, batch_y=None):
         y_predict = self.inference(batch_x, training=True)
-        self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=y_predict, labels=batch_y))
+        self.loss = 0.
+        for i in range(4):
+            logits = y_predict[:, i*36:(i+1)*36]
+            labels = batch_y[:, i*36:(i+1)*36]
+            self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=labels, logits=logits))
+        self.loss /= 4
         return self.loss
 
     def optimize(self, learning_rate, train_layers=[]):
