@@ -7,7 +7,7 @@ import cv2
 
 class BatchPreprocessor(object):
 
-    def __init__(self, dataset_file_path, num_classes, output_size=[227, 227], horizontal_flip=False, shuffle=False,
+    def __init__(self, dataset_file_path, num_classes, output_size=[224, 224], horizontal_flip=False, shuffle=False,
                  mean_color=[132.2766, 139.6506, 146.9702], multi_scale=None):
         self.num_classes = num_classes
         self.output_size = output_size
@@ -24,9 +24,18 @@ class BatchPreprocessor(object):
         dataset_file = open(dataset_file_path)
         lines = dataset_file.readlines()
         for line in lines:
-            items = line.split()
+            items = line.split(',')
             self.images.append(items[0])
-            self.labels.append(int(items[1]))
+            label = items[1].rstrip('\n')
+            four_hot = np.zeros(self.num_classes)
+            for idx in range(len(label)):
+                if (ord('A') <= ord(label[idx]) and ord(label[idx]) <= ord('Z')):
+                    hot_idx = ord(label[idx]) - ord('A') + 36 * idx
+                    four_hot[hot_idx] = 1
+                if (ord('0') <= ord(label[idx]) and ord(label[idx]) <= ord('9')):
+                    hot_idx = ord(label[idx]) - ord('0') + 26 + 36 * idx
+                    four_hot[hot_idx] = 1
+            self.labels.append(four_hot)
 
         # Shuffle the data
         if self.shuffle:
@@ -58,7 +67,7 @@ class BatchPreprocessor(object):
         self.pointer += batch_size
 
         # Read images
-        images = np.ndarray([batch_size, self.output_size[0], self.output_size[1], 3])
+        images = np.ndarray([batch_size, self.output_size[1], self.output_size[0], 3])
         for i in range(len(paths)):
             img = cv2.imread(paths[i])
 
@@ -68,7 +77,7 @@ class BatchPreprocessor(object):
 
             if self.multi_scale is None:
                 # Resize the image for output
-                img = cv2.resize(img, (self.output_size[0], self.output_size[0]))
+                img = cv2.resize(img, (self.output_size[0], self.output_size[1]))
                 img = img.astype(np.float32)
             elif isinstance(self.multi_scale, list):
                 # Resize to random scale
@@ -91,7 +100,7 @@ class BatchPreprocessor(object):
         # Expand labels to one hot encoding
         one_hot_labels = np.zeros((batch_size, self.num_classes))
         for i in range(len(labels)):
-            one_hot_labels[i][labels[i]] = 1
+            one_hot_labels[i] = labels[i]
 
         # Return array of images and labels
         return images, one_hot_labels
